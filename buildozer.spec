@@ -19,7 +19,7 @@ android.allow_backup = True
 p4a.local_recipes = 
 icon.filename = %(source.dir)s/assets/icon.png
 presplash.filename = %(source.dir)s/assets/presplash.png
-orientation = portrait
+
 [buildozer]
 log_level = 2
 warn_on_root = 1
