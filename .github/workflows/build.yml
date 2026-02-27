@@ -39,9 +39,18 @@ jobs:
           ~/.gradle
         key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
 
-    - name: Build APK
+        - name: Build APK
       run: |
         export PATH=$PATH:~/.local/bin
+        
+        # 第一步：先运行 buildozer 让它下载 SDK（这次会失败，没关系）
+        buildozer android debug 2>&1 || true
+        
+        # 第二步：关键！自动接受所有 Android SDK 许可证
+        yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || \
+        yes | ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --licenses 2>/dev/null || true
+        
+        # 第三步：真正构建 APK
         buildozer android debug 2>&1 | tee build.log
       timeout-minutes: 120
 
