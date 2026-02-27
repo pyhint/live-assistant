@@ -66,18 +66,20 @@ jobs:
         unzip -q commandlinetools-linux-9477386_latest.zip
         mv cmdline-tools latest
         
-        export PATH="$SDK_DIR/cmdline-tools/latest/bin:$PATH"
+        # 关键修复：创建 buildozer 期望的 tools/bin 目录结构
+        mkdir -p "$SDK_DIR/tools/bin"
+        ln -sf "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" "$SDK_DIR/tools/bin/sdkmanager"
+        ln -sf "$SDK_DIR/cmdline-tools/latest/bin/avdmanager" "$SDK_DIR/tools/bin/avdmanager" 2>/dev/null || true
+        
+        export PATH="$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/tools/bin:$PATH"
         export ANDROID_SDK_ROOT="$SDK_DIR"
         
         yes | sdkmanager --licenses > /dev/null 2>&1 || true
         sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
         
-        # 创建 sdkmanager 的符号链接到 buildozer 期望的路径
-        mkdir -p "$SDK_DIR/tools/bin"
-        ln -sf "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" "$SDK_DIR/tools/bin/sdkmanager"
-        
         echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
         echo "$SDK_DIR/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "$SDK_DIR/tools/bin" >> $GITHUB_PATH
         echo "$SDK_DIR/platform-tools" >> $GITHUB_PATH
     
     - name: Accept Android SDK licenses
