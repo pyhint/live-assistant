@@ -20,7 +20,6 @@ jobs:
       with:
         python-version: '3.10'
     
-    # 关键修复：删除创建 swap 的步骤，改为检查内存
     - name: Check system resources
       run: |
         echo "Memory info:"
@@ -56,6 +55,26 @@ jobs:
         key: Linux-buildozer-v3-${{ hashFiles('**/buildozer.spec') }}
         restore-keys: |
           Linux-buildozer-v3-
+    
+    - name: Setup Android SDK
+      run: |
+        SDK_DIR="$HOME/.buildozer/android/platform/android-sdk"
+        mkdir -p "$SDK_DIR/cmdline-tools"
+        
+        cd "$SDK_DIR/cmdline-tools"
+        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+        unzip -q commandlinetools-linux-9477386_latest.zip
+        mv cmdline-tools latest
+        
+        export PATH="$SDK_DIR/cmdline-tools/latest/bin:$PATH"
+        export ANDROID_SDK_ROOT="$SDK_DIR"
+        
+        yes | sdkmanager --licenses > /dev/null 2>&1 || true
+        sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
+        
+        echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
+        echo "$SDK_DIR/cmdline-tools/latest/bin" >> $GITHUB_PATH
+        echo "$SDK_DIR/platform-tools" >> $GITHUB_PATH
     
     - name: Accept Android SDK licenses
       run: |
