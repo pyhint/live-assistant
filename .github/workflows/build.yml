@@ -1,4 +1,4 @@
-name: Build APK
+name: Build Android APK
 
 on:
   push:
@@ -8,59 +8,53 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
+    
     steps:
     - uses: actions/checkout@v4
-
+    
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-
+    
     - name: Set up Java
       uses: actions/setup-java@v4
       with:
         java-version: '17'
         distribution: 'temurin'
-
+    
     - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y git zip unzip openjdk-17-jdk python3-pip autoconf libtool pkg-config zlib1g-dev libncurses5-dev libncursesw5-dev liblzma-dev cmake libffi-dev
         pip3 install --user buildozer cython
-
-    - name: Cache buildozer
+    
+    - name: Cache Buildozer
       uses: actions/cache@v4
       with:
         path: |
           ~/.buildozer
           ~/.gradle
-        key: ${{ runner.os }}-buildozer-${{ hashFiles('buildozer.spec') }}
-
+        key: ${{ runner.os }}-buildozer-${{ hashFiles('**/buildozer.spec') }}
+        restore-keys: |
+          ${{ runner.os }}-buildozer-
+    
     - name: Build APK
       run: |
         export PATH=$PATH:~/.local/bin
         
-        # 先运行一次，让 buildozer 下载 SDK
-        buildozer android debug 2>&1 || true
+        # 关键修复：预创建许可证文件，自动接受所有 SDK 许可证
+        mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
+        echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
+        echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
         
-        # 自动接受所有 SDK 许可证（关键修复！）
-        yes | ~/.buildozer/android/platform/android-sdk/cmdline-tools/latest/bin/sdkmanager --licenses 2>/dev/null || \
-        yes | ~/.buildozer/android/platform/android-sdk/tools/bin/sdkmanager --licenses 2>/dev/null || true
-        
-        # 真正构建
+        # 运行构建
         buildozer android debug 2>&1 | tee build.log
-
-    - name: Check output
-      run: |
-        ls -la bin/
-        find . -name "*.apk" -type f
-
+    
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
-        name: live-assistant-apk
+        name: apk
         path: bin/*.apk
-        retention-days: 5
-
