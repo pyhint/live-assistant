@@ -20,13 +20,15 @@ jobs:
       with:
         python-version: '3.10'
     
-    # 增加 swap 空间防止内存不足
-    - name: Setup swap space
+    # 关键修复：删除创建 swap 的步骤，改为检查内存
+    - name: Check system resources
       run: |
-        sudo fallocate -l 8G /swapfile
-        sudo chmod 600 /swapfile
-        sudo mkswap /swapfile
-        sudo swapon /swapfile
+        echo "Memory info:"
+        free -h
+        echo "Disk space:"
+        df -h
+        echo "Swap status:"
+        swapon --show || echo "No swap configured"
     
     - name: Install dependencies
       run: |
@@ -40,14 +42,12 @@ jobs:
         pip install --upgrade pip
         pip install buildozer cython
     
-    # 关键：清理旧的构建缓存（因为修改了 spec 文件）
     - name: Clean buildozer
       run: |
         rm -rf .buildozer/
         rm -rf ~/.buildozer/
         rm -rf bin/
     
-    # 关键：修改缓存 key 强制刷新
     - uses: actions/cache@v4
       with:
         path: |
@@ -57,7 +57,6 @@ jobs:
         restore-keys: |
           Linux-buildozer-v3-
     
-    # 预配置 Android SDK 许可证
     - name: Accept Android SDK licenses
       run: |
         mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
@@ -65,16 +64,13 @@ jobs:
         echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
         echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
     
-    # 构建 APK
     - name: Build APK
       run: |
         export PATH=$PATH:~/.local/bin
         buildozer -v android debug 2>&1 | tee build.log
-        # 检查是否生成 APK
         ls -la bin/ 2>/dev/null || echo "No bin directory found"
       timeout-minutes: 90
     
-    # 上传构建日志（无论成功失败）
     - name: Upload build log
       if: always()
       uses: actions/upload-artifact@v4
@@ -82,7 +78,6 @@ jobs:
         name: build-log
         path: build.log
     
-    # 上传 APK
     - name: Upload APK
       uses: actions/upload-artifact@v4
       with:
