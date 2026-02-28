@@ -14,8 +14,6 @@ jobs:
     
     steps:
     - uses: actions/checkout@v4
-      with:
-        fetch-depth: 0
 
     - name: Set up Python
       uses: actions/setup-python@v5
@@ -28,7 +26,7 @@ jobs:
         java-version: '17'
         distribution: 'temurin'
 
-    - name: Install system dependencies
+    - name: Install dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
@@ -68,51 +66,52 @@ jobs:
         echo "$SDK_DIR/cmdline-tools/latest/bin" >> $GITHUB_PATH
         echo "$SDK_DIR/tools/bin" >> $GITHUB_PATH
 
-    - name: Setup Android licenses
+    - name: Setup licenses
       run: |
         mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
         echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
         echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
-        echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
 
-    - name: Clean and prepare build
+    - name: Clean build
       run: |
-        rm -rf bin/
+        rm -rf bin/ .buildozer/android/platform/build-*/
         mkdir -p bin/
-        # 关键：清理可能损坏的构建缓存
-        rm -rf .buildozer/android/platform/build-*/build/
 
     - name: Build APK
       timeout-minutes: 90
       run: |
         export TERM=dumb
-        export DEBIAN_FRONTEND=noninteractive
-        
-        # 关键：禁用 p4a 的交互式提示
         export P4A_IS_RUNNING_REMOTELY=1
         
+        # 关键：运行 buildozer 并检查退出码
         buildozer -v android debug 2>&1 | tee build.log
+        BUILD_EXIT=${PIPESTATUS[0]}
         
-        echo "=== Build finished ==="
+        echo "Build exit code: $BUILD_EXIT"
+        
+        # 检查 APK 是否生成
+        echo "=== Checking for APK ==="
         find . -name "*.apk" -type f 2>/dev/null
-        ls -la bin/ 2>/dev/null || echo "No bin directory"
+        
+        ls -la bin/ 2>/dev/null || echo "bin directory missing"
+        
+        if [ $BUILD_EXIT -ne 0 ]; then
+          echo "Build failed with exit code $BUILD_EXIT"
+          tail -50 build.log
+          exit 1
+        fi
 
-    - name: Upload artifacts
+    - name: Upload APK artifact
       uses: actions/upload-artifact@v4
-      if: always()
+      if: success()
       with:
-        name: android-build
-        path: |
-          bin/*.apk
-          build.log
-        retention-days: 7
+        name: android-apk
+        path: bin/*.apk
+        if-no-files-found: error
 
     - name: Upload logs on failure
       uses: actions/upload-artifact@v4
       if: failure()
       with:
-        name: build-failure-logs
-        path: |
-          build.log
-          .buildozer/android/platform/build-*/build.log 2>/dev/null || true
-        retention-days: 3
+        name: build-logs
+        path: build.log
