@@ -11,25 +11,28 @@ fullscreen = 0
 android.presplash_color = #FFFFFF
 android.permissions = INTERNET,READ_EXTERNAL_STORAGE,WRITE_EXTERNAL_STORAGE,FOREGROUND_SERVICE,WAKE_LOCK,RECORD_AUDIO
 
-# Android 配置 - 修复后的关键部分
+# Android 配置
 android.api = 33
 android.minapi = 21
 android.ndk = 25b
-# 删除 android.sdk（已弃用）
-# 关键修复：arch -> archs（复数形式）
 android.archs = arm64-v8a
 android.allow_backup = True
 
-# 关键添加：指定 Gradle 版本，避免自动下载失败
-android.gradle_dependencies = com.android.tools.build:gradle:7.4.2
-
-# 关键添加：指定构建工具版本
+# 构建工具配置
 android.build_tools = 33.0.0
 
-p4a.local_recipes = 
+# 关键修复：移除有问题的 Gradle 依赖配置
+# android.gradle_dependencies 这行会导致构建失败，已删除
+
+# 关键添加：禁用 p4a 的 setup.py 处理（避免冲突）
+p4a.setup_py = False
+
+# 关键添加：确保使用正确的 bootstrap
+p4a.bootstrap = sdl2
+
+# 资源文件配置
 icon.filename = %(source.dir)s/assets/icon.png
 presplash.filename = %(source.dir)s/assets/presplash.png
-
 [buildozer]
 log_level = 2
 warn_on_root = 1
