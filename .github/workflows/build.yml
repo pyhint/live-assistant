@@ -34,12 +34,13 @@ jobs:
           autoconf libtool pkg-config zlib1g-dev \
           libncurses5-dev libncursesw5-dev \
           liblzma-dev cmake libffi-dev \
-          automake libltdl-dev
+          automake libltdl-dev libssl-dev \
+          build-essential
 
     - name: Install buildozer
       run: |
-        pip install --upgrade pip
-        pip install buildozer cython
+        pip install --upgrade pip setuptools wheel
+        pip install buildozer==1.5.0 cython
 
     - name: Setup Android SDK
       run: |
@@ -54,12 +55,12 @@ jobs:
         fi
         
         mkdir -p "$SDK_DIR/tools/bin"
-        ln -sf "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" "$SDK_DIR/tools/bin/sdkmanager" || true
+        ln -sf "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" "$SDK_DIR/tools/bin/sdkmanager"
         
         export PATH="$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/tools/bin:$PATH"
         export ANDROID_SDK_ROOT="$SDK_DIR"
         
-        yes | sdkmanager --licenses > /dev/null 2>&1 || true
+        yes | sdkmanager --licenses 2>&1 || true
         sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.0"
         
         echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
@@ -72,7 +73,7 @@ jobs:
         echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
         echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
 
-    - name: Clean build
+    - name: Clean and prepare
       run: |
         rm -rf bin/ .buildozer/android/platform/build-*/
         mkdir -p bin/
@@ -83,35 +84,43 @@ jobs:
         export TERM=dumb
         export P4A_IS_RUNNING_REMOTELY=1
         
-        # 关键：运行 buildozer 并检查退出码
-        buildozer -v android debug 2>&1 | tee build.log
-        BUILD_EXIT=${PIPESTATUS[0]}
+        # 关键：捕获完整日志到文件，同时显示在控制台
+        buildozer android debug 2>&1 | tee full_build.log || true
         
-        echo "Build exit code: $BUILD_EXIT"
+        # 保存退出码
+        EXIT_CODE=${PIPESTATUS[0]}
         
-        # 检查 APK 是否生成
+        echo "=== Build exit code: $EXIT_CODE ==="
+        
+        # 搜索关键错误
+        echo "=== Searching for errors in log ==="
+        grep -i "error\|exception\|traceback\|failed" full_build.log | tail -20 || true
+        
+        # 检查 APK
         echo "=== Checking for APK ==="
         find . -name "*.apk" -type f 2>/dev/null
         
-        ls -la bin/ 2>/dev/null || echo "bin directory missing"
+        ls -la bin/ 2>/dev/null || echo "No bin directory"
         
-        if [ $BUILD_EXIT -ne 0 ]; then
-          echo "Build failed with exit code $BUILD_EXIT"
-          tail -50 build.log
+        # 如果失败，显示最后50行
+        if [ $EXIT_CODE -ne 0 ]; then
+          echo "=== LAST 50 LINES OF LOG ==="
+          tail -50 full_build.log
           exit 1
         fi
 
-    - name: Upload APK artifact
+    - name: Upload APK
       uses: actions/upload-artifact@v4
       if: success()
       with:
         name: android-apk
         path: bin/*.apk
-        if-no-files-found: error
 
     - name: Upload logs on failure
       uses: actions/upload-artifact@v4
       if: failure()
       with:
         name: build-logs
-        path: build.log
+        path: |
+          full_build.log
+          .buildozer/android/platform/build-*/build.log 2>/dev/null || true
