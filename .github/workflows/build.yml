@@ -1,75 +1,62 @@
 name: Build Android APK
 
-on: [push, pull_request]
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
 
 jobs:
   build:
     runs-on: ubuntu-24.04
+    timeout-minutes: 120
     
     steps:
     - uses: actions/checkout@v4
-    
-    - name: Set up JDK 17
-      uses: actions/setup-java@v4
       with:
-        java-version: '17'
-        distribution: 'temurin'
-    
+        fetch-depth: 0
+
     - name: Set up Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.10'
-    
-    - name: Check system resources
-      run: |
-        echo "Memory info:"
-        free -h
-        echo "Disk space:"
-        df -h
-        echo "Swap status:"
-        swapon --show || echo "No swap configured"
-    
-    - name: Install dependencies
+
+    - name: Set up Java
+      uses: actions/setup-java@v4
+      with:
+        java-version: '17'
+        distribution: 'temurin'
+
+    - name: Install system dependencies
       run: |
         sudo apt-get update
         sudo apt-get install -y \
           git zip unzip openjdk-17-jdk python3-pip \
           autoconf libtool pkg-config zlib1g-dev \
           libncurses5-dev libncursesw5-dev \
-          liblzma-dev cmake libffi-dev
-        
+          liblzma-dev cmake libffi-dev \
+          automake libltdl-dev
+
+    - name: Install buildozer
+      run: |
         pip install --upgrade pip
         pip install buildozer cython
-    
-    - name: Clean buildozer
-      run: |
-        rm -rf .buildozer/
-        rm -rf ~/.buildozer/
-        rm -rf bin/
-    
-    - uses: actions/cache@v4
-      with:
-        path: |
-          ~/.buildozer
-          ~/.gradle
-        key: Linux-buildozer-v3-${{ hashFiles('**/buildozer.spec') }}
-        restore-keys: |
-          Linux-buildozer-v3-
-    
+
     - name: Setup Android SDK
       run: |
         SDK_DIR="$HOME/.buildozer/android/platform/android-sdk"
         mkdir -p "$SDK_DIR/cmdline-tools"
         
         cd "$SDK_DIR/cmdline-tools"
-        wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
-        unzip -q commandlinetools-linux-9477386_latest.zip
-        mv cmdline-tools latest
+        if [ ! -d "latest" ]; then
+          wget -q https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip
+          unzip -q commandlinetools-linux-9477386_latest.zip
+          mv cmdline-tools latest
+        fi
         
-        # 关键修复：创建 buildozer 期望的 tools/bin 目录结构
         mkdir -p "$SDK_DIR/tools/bin"
-        ln -sf "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" "$SDK_DIR/tools/bin/sdkmanager"
-        ln -sf "$SDK_DIR/cmdline-tools/latest/bin/avdmanager" "$SDK_DIR/tools/bin/avdmanager" 2>/dev/null || true
+        ln -sf "$SDK_DIR/cmdline-tools/latest/bin/sdkmanager" "$SDK_DIR/tools/bin/sdkmanager" || true
         
         export PATH="$SDK_DIR/cmdline-tools/latest/bin:$SDK_DIR/tools/bin:$PATH"
         export ANDROID_SDK_ROOT="$SDK_DIR"
@@ -80,31 +67,52 @@ jobs:
         echo "ANDROID_SDK_ROOT=$SDK_DIR" >> $GITHUB_ENV
         echo "$SDK_DIR/cmdline-tools/latest/bin" >> $GITHUB_PATH
         echo "$SDK_DIR/tools/bin" >> $GITHUB_PATH
-        echo "$SDK_DIR/platform-tools" >> $GITHUB_PATH
-    
-    - name: Accept Android SDK licenses
+
+    - name: Setup Android licenses
       run: |
         mkdir -p ~/.buildozer/android/platform/android-sdk/licenses
         echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
         echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
         echo "84831b9409646a918e30573bab4c9c91346d8abd" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-preview-license
-    
-    - name: Build APK
+
+    - name: Clean and prepare build
       run: |
-        export PATH=$PATH:~/.local/bin
-        buildozer -v android debug 2>&1 | tee build.log
-        ls -la bin/ 2>/dev/null || echo "No bin directory found"
+        rm -rf bin/
+        mkdir -p bin/
+        # 关键：清理可能损坏的构建缓存
+        rm -rf .buildozer/android/platform/build-*/build/
+
+    - name: Build APK
       timeout-minutes: 90
-    
-    - name: Upload build log
+      run: |
+        export TERM=dumb
+        export DEBIAN_FRONTEND=noninteractive
+        
+        # 关键：禁用 p4a 的交互式提示
+        export P4A_IS_RUNNING_REMOTELY=1
+        
+        buildozer -v android debug 2>&1 | tee build.log
+        
+        echo "=== Build finished ==="
+        find . -name "*.apk" -type f 2>/dev/null
+        ls -la bin/ 2>/dev/null || echo "No bin directory"
+
+    - name: Upload artifacts
+      uses: actions/upload-artifact@v4
       if: always()
-      uses: actions/upload-artifact@v4
       with:
-        name: build-log
-        path: build.log
-    
-    - name: Upload APK
+        name: android-build
+        path: |
+          bin/*.apk
+          build.log
+        retention-days: 7
+
+    - name: Upload logs on failure
       uses: actions/upload-artifact@v4
+      if: failure()
       with:
-        name: apk
-        path: bin/*.apk
+        name: build-failure-logs
+        path: |
+          build.log
+          .buildozer/android/platform/build-*/build.log 2>/dev/null || true
+        retention-days: 3
