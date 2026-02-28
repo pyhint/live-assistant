@@ -34,13 +34,12 @@ jobs:
           autoconf libtool pkg-config zlib1g-dev \
           libncurses5-dev libncursesw5-dev \
           liblzma-dev cmake libffi-dev \
-          automake libltdl-dev libssl-dev \
-          build-essential
+          automake libltdl-dev libssl-dev
 
     - name: Install buildozer
       run: |
         pip install --upgrade pip setuptools wheel
-        pip install buildozer==1.5.0 cython
+        pip install buildozer cython
 
     - name: Setup Android SDK
       run: |
@@ -73,7 +72,7 @@ jobs:
         echo "24333f8a63b6825ea9c5514f83c2829b004d1fee" > ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
         echo "d56f5187479451eabf01fb78af6dfcb131a6481e" >> ~/.buildozer/android/platform/android-sdk/licenses/android-sdk-license
 
-    - name: Clean and prepare
+    - name: Clean build
       run: |
         rm -rf bin/ .buildozer/android/platform/build-*/
         mkdir -p bin/
@@ -84,30 +83,11 @@ jobs:
         export TERM=dumb
         export P4A_IS_RUNNING_REMOTELY=1
         
-        # 关键：捕获完整日志到文件，同时显示在控制台
-        buildozer android debug 2>&1 | tee full_build.log || true
+        buildozer android debug 2>&1 | tee build.log
         
-        # 保存退出码
-        EXIT_CODE=${PIPESTATUS[0]}
-        
-        echo "=== Build exit code: $EXIT_CODE ==="
-        
-        # 搜索关键错误
-        echo "=== Searching for errors in log ==="
-        grep -i "error\|exception\|traceback\|failed" full_build.log | tail -20 || true
-        
-        # 检查 APK
-        echo "=== Checking for APK ==="
+        echo "=== Build completed ==="
         find . -name "*.apk" -type f 2>/dev/null
-        
         ls -la bin/ 2>/dev/null || echo "No bin directory"
-        
-        # 如果失败，显示最后50行
-        if [ $EXIT_CODE -ne 0 ]; then
-          echo "=== LAST 50 LINES OF LOG ==="
-          tail -50 full_build.log
-          exit 1
-        fi
 
     - name: Upload APK
       uses: actions/upload-artifact@v4
@@ -121,6 +101,4 @@ jobs:
       if: failure()
       with:
         name: build-logs
-        path: |
-          full_build.log
-          .buildozer/android/platform/build-*/build.log 2>/dev/null || true
+        path: build.log
